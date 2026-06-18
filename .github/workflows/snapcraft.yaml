@@ -1,0 +1,42 @@
+---
+# SPDX-License-Identifier: GPL-2.0-only
+name: build-snap
+"on":
+  pull_request: {}
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # yamllint disable rule:line-length
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0  # v6.0.3
+      - name: Diagnostics
+        run: |
+          echo "::group::snapcraft version"
+          snapcraft version || true
+          echo "::endgroup::"
+          echo "::group::lxd/lxc version"
+          lxc version || true
+          echo "::endgroup::"
+          echo "::group::disk space"
+          df -h
+          echo "::endgroup::"
+      - uses: snapcore/action-build@d12445ae70c52b1ead8b8a0ac6635f0432af5c80  # v1.3.0
+        env:
+          SNAPCRAFT_ENABLE_DEVELOPER_DEBUG: "1"
+      - name: Upload snapcraft logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        # yamllint enable rule:line-length
+        with:
+          name: snapcraft-log
+          path: ~/.local/state/snapcraft/log/
+          if-no-files-found: warn
+          retention-days: 14
