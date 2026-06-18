@@ -1,4 +1,5 @@
 ---
+# SPDX-License-Identifier: GPL-2.0-only
 name: itrue-octoprint
 # Need to stick with core24 as Octoprint doesn't support Python 3.14 yet.
 base: core24

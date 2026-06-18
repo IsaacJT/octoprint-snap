@@ -1,4 +1,5 @@
 #!/bin/sh -e
+# SPDX-License-Identifier: GPL-2.0-only
 
 # Runs whenever the snap is installed or `snap set` is used. It seeds sensible
 # defaults, validates user input, and restarts the service so changes take

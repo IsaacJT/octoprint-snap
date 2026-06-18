@@ -1,4 +1,5 @@
 #!/bin/sh -e
+# SPDX-License-Identifier: GPL-2.0-only
 
 # OctoPrint keeps all of its writable state (config.yaml, uploads, logs,
 # timelapses, plugins, etc.) under a single "basedir". The snap is read-only,
