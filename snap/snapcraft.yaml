@@ -23,6 +23,13 @@ description: |
 grade: devel
 confinement: strict
 
+platforms:
+  amd64:
+  arm64:
+  ppc64el:
+  riscv64:
+  s390x:
+
 apps:
   octoprint:
     command: bin/start-octoprint.sh
