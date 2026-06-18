@@ -1,0 +1,60 @@
+---
+name: itrue-octoprint
+# Need to stick with core24 as Octoprint doesn't support Python 3.14 yet.
+base: core24
+adopt-info: octoprint
+title: OctoPrint
+license: AGPL-3.0-only
+website: https://octoprint.org
+contact: https://community.octoprint.org
+issues: https://github.com/OctoPrint/OctoPrint/issues
+source-code: https://github.com/OctoPrint/OctoPrint
+donation: https://support.octoprint.org
+summary: The snappy web interface for your 3D printer.
+description: |
+  Control and monitor every aspect of your 3D printer and your printing jobs
+  right from within your browser.
+
+  ---
+
+  This is a community maintained snap of OctoPrint. The upstream project is
+  available at https://octoprint.org/.
+
+grade: devel
+confinement: strict
+
+apps:
+  octoprint:
+    command: bin/start-octoprint.sh
+    daemon: simple
+    restart-condition: on-failure
+    plugs:
+      - network
+      - network-bind
+      - raw-usb
+      - hardware-observe
+      - serial-port
+      - camera
+
+parts:
+  octoprint:
+    plugin: python
+    source: octoprint
+    override-build: |
+      craftctl default
+      ver="$("$CRAFT_PART_INSTALL/bin/python" - <<'PY'
+      import importlib.metadata
+      print(importlib.metadata.version("octoprint"))
+      PY
+      )"
+      craftctl set version="$ver"
+      install -D -m 0755 \
+        "$CRAFT_PART_SRC/start-octoprint.sh" \
+        "$CRAFT_PART_INSTALL/bin/start-octoprint.sh"
+    stage-packages:
+      - ffmpeg
+    python-packages:
+      - octoprint
+      # Bundled so the runtime venv can import it (via the layered .pth) to
+      # install user plugins; see octoprint/start-octoprint.sh.
+      - pip

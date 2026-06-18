@@ -1,0 +1,31 @@
+#!/bin/sh -e
+
+# Runs whenever the snap is installed or `snap set` is used. It seeds sensible
+# defaults, validates user input, and restarts the service so changes take
+# effect immediately.
+
+# --- host -------------------------------------------------------------------
+host="$(snapctl get host)"
+if [ -z "$host" ]; then
+    host="0.0.0.0"
+    snapctl set host="$host"
+fi
+
+# --- port -------------------------------------------------------------------
+port="$(snapctl get port)"
+if [ -z "$port" ]; then
+    port="5000"
+    snapctl set port="$port"
+fi
+
+# Reject anything that isn't a valid TCP port number.
+if ! echo "$port" | grep -Eq '^[0-9]+$' || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    echo "\"$port\" is not a valid port number (expected 1-65535)" >&2
+    exit 1
+fi
+
+# Apply the new configuration by restarting the daemon, but only if it has
+# already been started (it won't be during the initial install hook run).
+if snapctl services "$SNAP_INSTANCE_NAME.octoprint" 2>/dev/null | grep -q active; then
+    snapctl restart "$SNAP_INSTANCE_NAME.octoprint"
+fi
