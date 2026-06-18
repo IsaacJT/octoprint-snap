@@ -28,6 +28,9 @@ apps:
     command: bin/start-octoprint.sh
     daemon: simple
     restart-condition: on-failure
+    extensions:
+      # Required for ffmpeg libraries and acceleration
+      - gpu
     plugs:
       - network
       - network-bind
@@ -35,6 +38,7 @@ apps:
       - hardware-observe
       - serial-port
       - camera
+      - opengl
 
 parts:
   octoprint:
@@ -53,6 +57,34 @@ parts:
         "$CRAFT_PART_INSTALL/bin/start-octoprint.sh"
     stage-packages:
       - ffmpeg
+    # The ffmpeg stage-package pulls in many optional codec/output backends that
+    # nothing in the snap links against (text-art display via caca, JACK audio,
+    # Theora, FFTW, Google Highway, CMU Flite speech synthesis, etc.). Drop them
+    # from the payload to shrink the snap and keep the linters clean. The
+    # `usr/lib/*/` glob matches any multiarch triplet (x86_64-linux-gnu,
+    # aarch64-linux-gnu, arm-linux-gnueabihf, ...) so this stays arch-agnostic.
+    prime:
+      - -usr/lib/*/caca/libgl_plugin.so*
+      - -usr/lib/*/libcaca++.so*
+      - -usr/lib/*/libcjson_utils.so*
+      - -usr/lib/*/libfftw3_omp.so*
+      - -usr/lib/*/libfftw3_threads.so*
+      # Only the unused flite voice/lexicon data; the libflite_cmu_us_* voices
+      # are a NEEDED dependency of ffmpeg's libavfilter/libavdevice, so keep
+      # them or ffmpeg fails to load.
+      - -usr/lib/*/libflite_cmu_grapheme_lang.so*
+      - -usr/lib/*/libflite_cmu_grapheme_lex.so*
+      - -usr/lib/*/libflite_cmu_indic_lang.so*
+      - -usr/lib/*/libflite_cmu_indic_lex.so*
+      - -usr/lib/*/libflite_cmu_time_awb.so*
+      - -usr/lib/*/libhwy_contrib.so*
+      - -usr/lib/*/libhwy_test.so*
+      - -usr/lib/*/libjacknet.so*
+      - -usr/lib/*/libjackserver.so*
+      - -usr/lib/*/libpulse-simple.so*
+      - -usr/lib/*/libsphinxad.so*
+      - -usr/lib/*/libtheora.so*
+      - -usr/lib/*/libzvbi-chains.so*
     python-packages:
       - octoprint
       # Bundled so the runtime venv can import it (via the layered .pth) to

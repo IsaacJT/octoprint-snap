@@ -9,9 +9,11 @@ older sections, so reading top-to-bottom mirrors how the snap evolved.
 `itrue-octoprint` packages [OctoPrint](https://octoprint.org/) as a strictly
 confined snap. Key files:
 
-- `snap/snapcraft.yaml` — snap definition (base, metadata, apps, parts).
+- `snap/snapcraft.yaml` — snap definition (base, metadata, lint config, apps,
+  parts).
 - `octoprint/start-octoprint.sh` — launcher for the OctoPrint daemon.
 - `snap/hooks/configure` — validates/seeds `host`/`port` snap config.
+- `docs/DEVELOPMENT-NOTES.md` — this file.
 
 ---
 
@@ -82,21 +84,24 @@ A side benefit is that serial/USB device permissions (e.g. `/dev/ttyUSB*`,
 
 ## 6. Upstream metadata
 
-Added standard snap metadata pulled directly from OctoPrint's `setup.py`:
+Added standard snap metadata. Most values come from OctoPrint's `setup.py`;
+the `issues`/`source-code` links were later pointed at the snap's own packaging
+repository (and `contact` dropped) as an external change:
 
 | Field | Value |
 |-------|-------|
 | `title` | OctoPrint |
 | `license` | `AGPL-3.0-only` |
 | `website` | https://octoprint.org |
-| `contact` | https://community.octoprint.org |
-| `issues` | https://github.com/OctoPrint/OctoPrint/issues |
-| `source-code` | https://github.com/OctoPrint/OctoPrint |
+| `issues` | https://github.com/IsaacJT/octoprint-snap/issues |
+| `source-code` | https://github.com/IsaacJT/octoprint-snap |
 | `donation` | https://support.octoprint.org |
 
 The license field uses the SPDX identifier; the classifier
 "GNU Affero General Public License v3" (without "or later") maps to
-`AGPL-3.0-only`.
+`AGPL-3.0-only`. `SPDX-License-Identifier: GPL-2.0-only` headers were also added
+to the packaging sources (`snapcraft.yaml`, `start-octoprint.sh`) as an external
+change.
 
 ---
 
@@ -175,18 +180,84 @@ shim). User-installed venv packages still take precedence.
 
 ---
 
+## 10. Timelapse rendering: `ffmpeg` + the `gpu` extension
+
+`ffmpeg` was added as a `stage-package` so OctoPrint can render timelapses.
+This dragged in a large dependency closure and triggered two classes of
+snapcraft linter warnings:
+
+- **`gpu` linter** — mesa/VA-API/VDPAU/libdrm libraries flagged with
+  "GPU support library should be provided by a content interface".
+- **`library` linter** — many "unused library" / "missing dependency" warnings
+  for optional codec/output backends (caca, JACK, Theora, FFTW, etc.).
+
+**GPU fix (external change):** the `gpu` extension was added to the `octoprint`
+app (plus the `opengl` plug). This routes the GPU userspace through the
+`gpu-2404` content interface (snapcraft builds `gpu/wrapper` + `gpu/cleanup`),
+which resolved **all** `gpu` warnings and the GPU-related `library` warnings.
+
+## 11. Trimming the remaining `library` warnings in prime
+
+The leftover `library` warnings were all harmless ffmpeg optional backends that
+nothing in the snap links against. Rather than ignore them, they are dropped
+from the payload entirely via a per-part `prime` exclusion list (which also
+shrinks the snap). Paths use a `usr/lib/*/` glob so they are arch-agnostic
+(the `*` matches any multiarch triplet: `x86_64-linux-gnu`, `aarch64-linux-gnu`,
+`arm-linux-gnueabihf`, ...):
+
+```yaml
+parts:
+  octoprint:
+    prime:
+      - -usr/lib/*/caca/libgl_plugin.so*
+      - -usr/lib/*/libcaca++.so*
+      # ... fftw3, hwy, jack, pulse-simple, sphinx, theora, zvbi, select flite
+```
+
+Two gotchas hit while doing this:
+
+- **Don't over-glob `libflite_*`.** The `libflite_cmu_us_*` voices are a NEEDED
+  dependency of ffmpeg's `libavfilter`/`libavdevice`; removing them turns the
+  warnings into "missing dependency" errors and would break ffmpeg at load
+  time. Only the unused lang/lex/voice-data libs are removed.
+- **Removal cascades.** Dropping a library can leave *its* dependency unused
+  (e.g. removing `libflite_cmu_indic_lex` made `libflite_cmu_indic_lang`
+  unused). Rebuild and add any newly surfaced "unused library" path until the
+  run is clean.
+
+## 12. Build & verification
+
+- **Build:** `snapcraft pack` (snapcraft 9.0.0, LXD, `core24`) succeeds and
+  produces `itrue-octoprint_<version>_amd64.snap` (e.g. `1.11.7`) with **no
+  lint warnings**.
+- **Packaged contents verified:** `snap.yaml` has the adopted version, license,
+  app/plugs and links; the `configure` hook, `start-octoprint.sh`, and the
+  `bin/python3 → /usr/bin/python3.12` symlink are all present.
+- **Interpreter note:** the python plugin found no interpreter in the payload
+  and symlinked `bin/python3` to the base's `/usr/bin/python3.12`. That is a
+  *stable* path, so the venv interpreter symlink does **not** dangle across a
+  refresh — the `--upgrade` rebuild path is rarely needed in practice.
+- **Runtime:** confirmed working by the maintainer (plugin install via the
+  writable venv, no `ensurepip`/`distutils` errors).
+
+---
+
 ## Known caveats / follow-ups
 
 - **Plugins needing C compilation won't install** — there's no compiler in the
   runtime; pure-Python/wheel plugins are fine.
 - **Interface auto-connection:** most device plugs (`raw-usb`, `serial-port`,
   `camera`) need manual `snap connect` after install.
-- **Not yet built/validated:** changes have not been run through `snapcraft`
-  end-to-end. Suggested smoke test after building:
+- **Build & runtime validated:** `snapcraft pack` produces a clean,
+  warning-free snap and the maintainer has confirmed runtime behaviour. Useful
+  smoke test after future changes:
   - Daemon starts with no `ensurepip`/`distutils` errors; `$SNAP_COMMON/venv`
     exists.
   - A pure-Python plugin installs into `$SNAP_COMMON/venv/...` and loads after a
     restart.
   - A `snap refresh`/revision bump preserves installed plugins (the `--upgrade`
     path).
+- **New `library` lint warnings** after a toolchain/ffmpeg bump: add the
+  offending path to the part's `prime` exclusion list (see section 11), minding
+  the over-glob and cascade gotchas noted there.
 - `grade: devel` — revisit before stable publication.
